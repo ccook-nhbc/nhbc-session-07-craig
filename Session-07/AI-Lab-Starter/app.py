@@ -4,7 +4,7 @@ from openai import OpenAI
 import json
 
 # Load Data
-df = pl.read_csv("properties.csv")
+df = pl.read_csv("/home/ccook/Python/Session-07/AI-Lab-Starter/properties.csv")
 
 # Configuration
 # Choose provider: 'ollama', 'gemini', or 'azure'
@@ -42,13 +42,24 @@ elif PROVIDER == 'azure':
 # TODO: Define your System Prompt here
 # TODO: Our example code assumes a JSON response; you can do something different if you want.
 SYSTEM_PROMPT = """
-You are a data filtering assistant.
+You are a data filtering assistant. 
 The user will ask for properties based on specific criteria.
-XXX TODO: This is how our example code work but you can change: **DELETE ME** XXX
 You must return a JSON object representing the filters.
 Do not return any text other than the JSON.
+You must stay strict to the filters, do not add filters that are not requested.
+If a word is misspelt, you should match it to the relevant filter.
 
-XXX TODO: FINISH **DELETE ME** XXX
+The dataset has the following columns and values:
+- Location: London, Manchester, Birmingham, Leeds, Glasgow, Bristol
+- Construction: Masonry, Timber Frame, Steel Frame, Reinforced Concrete
+- FloodRisk: Low, Medium, High, Very High
+- SumInsured: (Numeric)
+- YearBuilt: (Numeric)
+
+Example User Input: "Show me high risk timber buildings in London"
+Example JSON Output: {"FloodRisk": "High", "Construction": "Timber Frame", "Location": "London"}
+
+If the user asks to reset or show all, return an empty JSON object: {}
 """
 
 app_ui = ui.page_fluid(
@@ -85,16 +96,21 @@ def server(input, output, session):
         await chat.append_message(user_input)
         
         # TODO: Call LLM to get filters
-        if False:
+        if True:
             # TODO
             try:
                 response = client.chat.completions.create(
                     model=MODEL,
-                    ### TODO
+                    messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_input}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1
                 )
-                
                 json_str = response.choices[0].message.content
                 filters = json.loads(json_str)
+                print(filters)
                 
                 # 3. Apply Filters
                 current_df = df
@@ -106,12 +122,14 @@ def server(input, output, session):
                     for col, val in filters.items():
                         if col in df.columns:
                             # TODO - try at least simple strings
-                
+                            current_df = current_df.filter(pl.col(col) == val)
+                            filter_desc.append(f"{col}='{val}'")
+
                 filtered_df.set(current_df)
-        else:
-            # For now, we just echo
-            response = f"You said: {user_input}. (AI logic not implemented yet)"
-        
+            except Exception as e:
+                await chat.append_message(f"Error processing request: {e}")
+                return
+
         await chat.append_message(response)
 
     @render.data_frame
